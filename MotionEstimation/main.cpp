@@ -50,17 +50,21 @@ int main( int argc, char* argv[] )
 	// Понастраивать бы параметры, да не на чем :(
 	static const int blockSize = 16;
 	static const int searchRadius = 7;
-	static const double dispersionThreshold = 80.0;
+	static const double dispersionThreshold = 80;
 	CMotionEstimator motionEstimator( blockSize, searchRadius, dispersionThreshold );
 	vector<TMotionEstimationResult> results;
 	for( size_t pictureIdx = 1; pictureIdx < pictureData.size(); pictureIdx++ ) {
 		results.push_back( motionEstimator.CalculateEstimation( *pictureData[pictureIdx - 1], *pictureData[pictureIdx] ) );
 	}
+
 	// Вывод результатов.
 	wofstream motionVectors( argv[2] );
 	wofstream workTimes( argv[3] );
+	TMotionVector totalVectorToFirst( 0, 0 );
 	for( auto result : results ) {
-		motionVectors << L"( " << result.first.first << L", " << result.first.second << " ) " << endl;
+		totalVectorToFirst.first += result.first.first;
+		totalVectorToFirst.second += result.first.second;
+		motionVectors << L"( " << totalVectorToFirst.first << L", " << totalVectorToFirst.second << " ) " << endl;
 		workTimes << result.second << endl;
 	}
 

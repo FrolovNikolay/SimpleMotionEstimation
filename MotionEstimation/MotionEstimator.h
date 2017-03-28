@@ -9,7 +9,7 @@
 #include <vector>
 
 // Вектор смещения.
-typedef std::pair<int, int> TMotionVector;
+typedef std::pair<double, double> TMotionVector;
 // Вектор смещения + время работы.
 typedef std::pair<TMotionVector, double> TMotionEstimationResult;
 
@@ -28,11 +28,14 @@ private:
 
 		Gdiplus::Rect Coordinates;
 		TMotionVector CalculatedVector;
+		double Distance;
 	};
 
 	int blockSize; // размеры блока.
 	int searchRadius; // радиус поиска. Регион поиска имеет размеры blockSize + 2 * searchRadius.
 	double dispersionThreshold; // минимальный порог дисперсии блока. Блоки с малой дисперсией рассматривать не будем.
+
+	mutable double meanDistance;
 
 	// Вычленяем блоки для обработки.
 	void createBlocksForProcess( const Gdiplus::BitmapData& image, std::vector<CBlockInfo>& blocksForProcess ) const;

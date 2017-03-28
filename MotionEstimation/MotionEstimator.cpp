@@ -49,7 +49,7 @@ double CMotionEstimator::calculateRectDispersion( const BitmapData& image, const
 	BYTE* imageBuffer = ( BYTE* )image.Scan0;
 	for( int currentY = rect.GetTop(); currentY < rect.GetBottom(); currentY++ ) {
 		for( int currentX = rect.GetLeft(); currentX < rect.GetRight(); currentX++ ) {
-			double difference = mean - imageBuffer[currentY * image.Width + currentX];
+			double difference = mean - imageBuffer[currentY * image.Stride + currentX];
 			dispSum += difference * difference;
 		}
 	}
@@ -62,7 +62,7 @@ double CMotionEstimator::calculateRectMean( const BitmapData& image, const Rect&
 	BYTE* imageBuffer = ( BYTE* )image.Scan0;
 	for( int currentY = rect.GetTop(); currentY < rect.GetBottom(); currentY++ ) {
 		for( int currentX = rect.GetLeft(); currentX < rect.GetRight(); currentX++ ) {
-			sum += imageBuffer[currentY * image.Width + currentX];
+			sum += imageBuffer[currentY * image.Stride + currentX];
 		}
 	}
 	return sum / static_cast<double>( blockSize * blockSize );
@@ -71,22 +71,24 @@ double CMotionEstimator::calculateRectMean( const BitmapData& image, const Rect&
 void CMotionEstimator::calculateBlocksEstimation( const BitmapData& original, const BitmapData& moved,
 	vector<CBlockInfo>& blocksForProcess ) const
 {
+	meanDistance = 0.0;
 	for( size_t blockIdx = 0; blockIdx < blocksForProcess.size(); blockIdx++ ) {
-		int minimumDistance = INT_MAX;
+		blocksForProcess[blockIdx].Distance = DBL_MAX;
 		for( int deltaX = -searchRadius; deltaX <= searchRadius; deltaX++ ) {
 			for( int deltaY = -searchRadius; deltaY <= searchRadius; deltaY++ ) {
 				double blocksDistance = calculateBlocksDistance( original, blocksForProcess[blockIdx].Coordinates,
 					moved, deltaX, deltaY );
-				if( minimumDistance > blocksDistance ) {
-					minimumDistance = blocksDistance;
+				if( blocksForProcess[blockIdx].Distance > blocksDistance ) {
+					blocksForProcess[blockIdx].Distance = blocksDistance;
 					blocksForProcess[blockIdx].CalculatedVector = TMotionVector( deltaX, deltaY );
 				}
 			}
 		}
+		meanDistance += blocksForProcess[blockIdx].Distance;
 	}
 }
 
-// L2 метрика без нормировки.
+// L2 метрика.
 double CMotionEstimator::calculateBlocksDistance( const BitmapData& original, const Rect& originalRect,
 	const BitmapData& moved, int deltaX, int deltaY ) const
 {
@@ -97,22 +99,27 @@ double CMotionEstimator::calculateBlocksDistance( const BitmapData& original, co
 		for( int originalX = originalRect.GetLeft(); originalX < originalRect.GetRight(); originalX++ ) {
 			int movedY = originalY + deltaY;
 			int movedX = originalX + deltaX;
-			int delta = originalImageBuffer[originalY * original.Width + originalX]
-				- movedImageBuffer[movedY * moved.Width + movedX];
+			int delta = originalImageBuffer[originalY * original.Stride + originalX]
+				- movedImageBuffer[movedY * moved.Stride + movedX];
 			difference += delta * delta;
 		}
 	}
-	return difference;
+	return difference / ( blockSize * blockSize );
 }
 
 TMotionVector CMotionEstimator::consolidateMotionVectors( const vector<CBlockInfo>& processedBlocks ) const
 {
 	// Здесь бы придумать что-то поумнее - ничего дельного в статьях не нашел. :(
-	int sumDeltaX = 0;
-	int sumDeltaY = 0;
+	double sumDeltaX = 0;
+	double sumDeltaY = 0;
+	int countedBlocks = 0;
 	for( size_t blockIdx = 0; blockIdx < processedBlocks.size(); blockIdx++ ) {
-		sumDeltaX += processedBlocks[blockIdx].CalculatedVector.first;
-		sumDeltaY += processedBlocks[blockIdx].CalculatedVector.second;
+		// Подбирал на пальцах, чтобы совсем не усреднеть что попало.
+		if( processedBlocks[blockIdx].Distance <= meanDistance / 2 ) {
+			sumDeltaX += processedBlocks[blockIdx].CalculatedVector.first;
+			sumDeltaY += processedBlocks[blockIdx].CalculatedVector.second;
+			countedBlocks++;
+		}
 	}
-	return TMotionVector( sumDeltaX / static_cast<int>( processedBlocks.size() ), sumDeltaY / static_cast<int>( processedBlocks.size() ) );
+	return TMotionVector( sumDeltaX / static_cast<double> ( countedBlocks ), sumDeltaY / static_cast< double >( countedBlocks ) );
 }
