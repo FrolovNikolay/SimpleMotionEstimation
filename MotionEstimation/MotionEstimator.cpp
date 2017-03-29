@@ -15,19 +15,25 @@ CMotionEstimator::CMotionEstimator( int _blockSize, int _searchRadius, double _d
 	dispersionThreshold( _dispersionThreshold )
 {}
 
+// Общая сложность по сумме подопераций: ~2HW * ( 1 + 2 * searchRadius^2 ) + HW / ( blockSize^2 ).
 TMotionEstimationResult CMotionEstimator::CalculateEstimation( const BitmapData& original, const BitmapData& moved ) const
 {
 	time_t start = clock();
 
 	vector<CBlockInfo> blocksForProcess;
+	// 2WH.
 	createBlocksForProcess( original, blocksForProcess );
-	calculateBlocksEstimation( original, moved, blocksForProcess );
-	TMotionVector motionVector = consolidateMotionVectors( blocksForProcess );
+	// 4*WH*searchRadius^2.
+	double meanDistance = 0.0;
+	calculateBlocksEstimation( original, moved, blocksForProcess, meanDistance );
+	// HW / ( blockSize^2 )
+	TMotionVector motionVector = consolidateMotionVectors( blocksForProcess, meanDistance );
 
 	time_t end = clock();
 	return TMotionEstimationResult( motionVector, static_cast<double>( end - start ) / CLOCKS_PER_SEC );
 }
 
+// 2WH.
 void CMotionEstimator::createBlocksForProcess( const BitmapData& image, vector<CBlockInfo>& blocksForProcess ) const
 {
 	blocksForProcess.clear();
@@ -42,6 +48,7 @@ void CMotionEstimator::createBlocksForProcess( const BitmapData& image, vector<C
 	}
 }
 
+// В сумме по картинке ~2WH
 double CMotionEstimator::calculateRectDispersion( const BitmapData& image, const Rect& rect ) const
 {
 	double mean = calculateRectMean( image, rect );
@@ -56,6 +63,7 @@ double CMotionEstimator::calculateRectDispersion( const BitmapData& image, const
 	return sqrt( dispSum / ( static_cast<double>( blockSize * blockSize ) ) );
 }
 
+// В сумме по картинке сложность ~WH
 double CMotionEstimator::calculateRectMean( const BitmapData& image, const Rect& rect ) const
 {
 	double sum = 0.0;
@@ -68,10 +76,11 @@ double CMotionEstimator::calculateRectMean( const BitmapData& image, const Rect&
 	return sum / static_cast<double>( blockSize * blockSize );
 }
 
+// Каждый блок картинки матчим (2 * searchRadius )^2 раз. В худшем случае, если дисперсией ничего не откинули, получаем 4*WH*searchRadius^2.
 void CMotionEstimator::calculateBlocksEstimation( const BitmapData& original, const BitmapData& moved,
-	vector<CBlockInfo>& blocksForProcess ) const
+	vector<CBlockInfo>& blocksForProcess, double& meanDistance ) const
 {
-	meanDistance = 0.0;
+	meanDistance = 0;
 	for( size_t blockIdx = 0; blockIdx < blocksForProcess.size(); blockIdx++ ) {
 		blocksForProcess[blockIdx].Distance = DBL_MAX;
 		for( int deltaX = -searchRadius; deltaX <= searchRadius; deltaX++ ) {
@@ -106,8 +115,8 @@ double CMotionEstimator::calculateBlocksDistance( const BitmapData& original, co
 	}
 	return difference / ( blockSize * blockSize );
 }
-
-TMotionVector CMotionEstimator::consolidateMotionVectors( const vector<CBlockInfo>& processedBlocks ) const
+// Суммируем по ~HW / ( blockSize^2 ) блокам.
+TMotionVector CMotionEstimator::consolidateMotionVectors( const vector<CBlockInfo>& processedBlocks, double meanDistance ) const
 {
 	// Здесь бы придумать что-то поумнее - ничего дельного в статьях не нашел. :(
 	double sumDeltaX = 0;
@@ -115,6 +124,7 @@ TMotionVector CMotionEstimator::consolidateMotionVectors( const vector<CBlockInf
 	int countedBlocks = 0;
 	for( size_t blockIdx = 0; blockIdx < processedBlocks.size(); blockIdx++ ) {
 		// Подбирал на пальцах, чтобы совсем не усреднеть что попало.
+		// Считаем, что если блок сматчился лушчим образом, но все еще не очень хорошо, то его данные лучше проигнорировать.
 		if( processedBlocks[blockIdx].Distance <= meanDistance / 2 ) {
 			sumDeltaX += processedBlocks[blockIdx].CalculatedVector.first;
 			sumDeltaY += processedBlocks[blockIdx].CalculatedVector.second;

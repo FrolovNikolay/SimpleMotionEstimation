@@ -54,6 +54,7 @@ int main( int argc, char* argv[] )
 	CMotionEstimator motionEstimator( blockSize, searchRadius, dispersionThreshold );
 	vector<TMotionEstimationResult> results;
 	for( size_t pictureIdx = 1; pictureIdx < pictureData.size(); pictureIdx++ ) {
+		// Сложность: ~2HW * ( 1 + 2 * searchRadius^2 ) + HW / ( blockSize^2 ). Подробнее в комментарие к методу.
 		results.push_back( motionEstimator.CalculateEstimation( *pictureData[pictureIdx - 1], *pictureData[pictureIdx] ) );
 	}
 
